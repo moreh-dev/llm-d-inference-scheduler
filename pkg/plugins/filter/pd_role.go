@@ -8,7 +8,7 @@ import (
 
 const (
 	// RoleLabel name
-	RoleLabel = "llm-d.ai/role"
+	RoleLabel = "mif.moreh.io/role"
 	// RolePrefill set for designated prefill workers
 	RolePrefill = "prefill"
 	// RoleDecode set for designated decode workers

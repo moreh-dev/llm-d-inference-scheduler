@@ -25,17 +25,17 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/utils/ptr"
 
-	configapi "github.com/llm-d/llm-d-inference-scheduler/apix/config/v1alpha1"
-	"github.com/llm-d/llm-d-inference-scheduler/pkg/epp/flowcontrol/contracts"
-	"github.com/llm-d/llm-d-inference-scheduler/pkg/epp/flowcontrol/framework/plugins/queue"
-	"github.com/llm-d/llm-d-inference-scheduler/pkg/epp/framework/interface/flowcontrol"
-	fwkfcmocks "github.com/llm-d/llm-d-inference-scheduler/pkg/epp/framework/interface/flowcontrol/mocks"
-	"github.com/llm-d/llm-d-inference-scheduler/pkg/epp/framework/interface/plugin"
-	"github.com/llm-d/llm-d-inference-scheduler/pkg/epp/framework/plugins/flowcontrol/fairness/globalstrict"
-	"github.com/llm-d/llm-d-inference-scheduler/pkg/epp/framework/plugins/flowcontrol/fairness/roundrobin"
-	"github.com/llm-d/llm-d-inference-scheduler/pkg/epp/framework/plugins/flowcontrol/ordering/edf"
-	"github.com/llm-d/llm-d-inference-scheduler/pkg/epp/framework/plugins/flowcontrol/ordering/fcfs"
-	igwtestutils "github.com/llm-d/llm-d-inference-scheduler/test/utils/igw"
+	configapi "github.com/llm-d/llm-d-router/apix/config/v1alpha1"
+	"github.com/llm-d/llm-d-router/pkg/epp/flowcontrol/contracts"
+	"github.com/llm-d/llm-d-router/pkg/epp/flowcontrol/framework/plugins/queue"
+	"github.com/llm-d/llm-d-router/pkg/epp/framework/interface/flowcontrol"
+	fwkfcmocks "github.com/llm-d/llm-d-router/pkg/epp/framework/interface/flowcontrol/mocks"
+	"github.com/llm-d/llm-d-router/pkg/epp/framework/interface/plugin"
+	"github.com/llm-d/llm-d-router/pkg/epp/framework/plugins/flowcontrol/fairness/globalstrict"
+	"github.com/llm-d/llm-d-router/pkg/epp/framework/plugins/flowcontrol/fairness/roundrobin"
+	"github.com/llm-d/llm-d-router/pkg/epp/framework/plugins/flowcontrol/ordering/edf"
+	"github.com/llm-d/llm-d-router/pkg/epp/framework/plugins/flowcontrol/ordering/fcfs"
+	igwtestutils "github.com/llm-d/llm-d-router/test/utils/igw"
 )
 
 func newTestPluginsHandle(t *testing.T) plugin.Handle {
@@ -109,7 +109,6 @@ func TestNewConfig(t *testing.T) {
 			},
 			handle: newTestPluginsHandle(t),
 			assertion: func(t *testing.T, cfg *Config) {
-				assert.Equal(t, defaultInitialShardCount, cfg.InitialShardCount, "InitialShardCount should be defaulted")
 				assert.Equal(t, defaultFlowGCTimeout, cfg.FlowGCTimeout, "FlowGCTimeout should be defaulted")
 				assert.Equal(t, defaultPriorityBandGCTimeout, cfg.PriorityBandGCTimeout, "PriorityBandGCTimeout should be defaulted")
 
@@ -126,7 +125,6 @@ func TestNewConfig(t *testing.T) {
 		{
 			name: "ShouldRespectGlobalOverrides",
 			opts: []ConfigOption{
-				WithInitialShardCount(10),
 				WithMaxBytes(5000),
 				WithFlowGCTimeout(1 * time.Hour),
 				WithPriorityBandGCTimeout(2 * time.Hour),
@@ -134,7 +132,6 @@ func TestNewConfig(t *testing.T) {
 			},
 			handle: newTestPluginsHandle(t),
 			assertion: func(t *testing.T, cfg *Config) {
-				assert.Equal(t, 10, cfg.InitialShardCount)
 				assert.Equal(t, uint64(5000), cfg.MaxBytes)
 				assert.Equal(t, 1*time.Hour, cfg.FlowGCTimeout)
 				assert.Equal(t, 2*time.Hour, cfg.PriorityBandGCTimeout)
@@ -191,12 +188,6 @@ func TestNewConfig(t *testing.T) {
 		},
 
 		// --- Validation Errors (Global) ---
-		{
-			name:      "ShouldError_WhenInitialShardCountIsInvalid",
-			opts:      []ConfigOption{WithInitialShardCount(0)}, // Option itself should return error.
-			handle:    newTestPluginsHandle(t),
-			expectErr: true,
-		},
 		{
 			name:      "ShouldError_WhenFlowGCTimeoutIsInvalid",
 			opts:      []ConfigOption{WithFlowGCTimeout(-1 * time.Second)},

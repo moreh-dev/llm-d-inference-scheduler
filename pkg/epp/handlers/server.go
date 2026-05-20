@@ -23,6 +23,7 @@ import (
 	"strings"
 	"time"
 
+	configPb "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extProcPb "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	envoyTypePb "github.com/envoyproxy/go-control-plane/envoy/type/v3"
 	"github.com/go-logr/logr"
@@ -35,16 +36,16 @@ import (
 	"google.golang.org/protobuf/types/known/structpb"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	envoy "github.com/llm-d/llm-d-inference-scheduler/pkg/common/envoy"
-	errcommon "github.com/llm-d/llm-d-inference-scheduler/pkg/common/error"
-	logutil "github.com/llm-d/llm-d-inference-scheduler/pkg/common/observability/logging"
-	reqcommon "github.com/llm-d/llm-d-inference-scheduler/pkg/common/request"
-	"github.com/llm-d/llm-d-inference-scheduler/pkg/epp/datalayer"
-	fwkdl "github.com/llm-d/llm-d-inference-scheduler/pkg/epp/framework/interface/datalayer"
-	fwkrh "github.com/llm-d/llm-d-inference-scheduler/pkg/epp/framework/interface/requesthandling"
-	fwksched "github.com/llm-d/llm-d-inference-scheduler/pkg/epp/framework/interface/scheduling"
-	"github.com/llm-d/llm-d-inference-scheduler/pkg/epp/metrics"
-	"github.com/llm-d/llm-d-inference-scheduler/version"
+	envoy "github.com/llm-d/llm-d-router/pkg/common/envoy"
+	errcommon "github.com/llm-d/llm-d-router/pkg/common/error"
+	logutil "github.com/llm-d/llm-d-router/pkg/common/observability/logging"
+	reqcommon "github.com/llm-d/llm-d-router/pkg/common/request"
+	"github.com/llm-d/llm-d-router/pkg/epp/datalayer"
+	fwkdl "github.com/llm-d/llm-d-router/pkg/epp/framework/interface/datalayer"
+	fwkrh "github.com/llm-d/llm-d-router/pkg/epp/framework/interface/requesthandling"
+	fwksched "github.com/llm-d/llm-d-router/pkg/epp/framework/interface/scheduling"
+	"github.com/llm-d/llm-d-router/pkg/epp/metrics"
+	"github.com/llm-d/llm-d-router/version"
 )
 
 // EvictChannelLookup is an optional interface for looking up eviction channels by request ID.
@@ -52,6 +53,7 @@ import (
 // to support eviction of in-flight requests via ext_proc ImmediateResponse.
 type EvictChannelLookup interface {
 	Get(requestID string) chan struct{}
+	GetReason(requestID string) errcommon.RequestDroppedReason
 	Deregister(requestID string)
 }
 
@@ -115,6 +117,7 @@ type RequestContext struct {
 	SchedulingRequest *fwksched.InferenceRequest
 
 	RequestState         StreamRequestState
+	RequestDroppedReason errcommon.RequestDroppedReason
 	modelServerStreaming bool
 
 	Response *Response
@@ -167,7 +170,7 @@ func (s *StreamingServer) Process(srv extProcPb.ExternalProcessor_ProcessServer)
 
 	// Start tracing span for the request
 	tracer := otel.Tracer(
-		"llm-d-inference-scheduler/epp/extproc",
+		"llm-d-router/epp/extproc",
 		trace.WithInstrumentationVersion(version.BuildRef),
 		trace.WithInstrumentationAttributes(
 			attribute.String("commit-sha", version.CommitSHA),
@@ -272,6 +275,9 @@ func (s *StreamingServer) Process(srv extProcPb.ExternalProcessor_ProcessServer)
 			// Eviction triggered — transition to evicted state and let the state machine send the response.
 			logger.Info("Request evicted by flow control", "requestID", evictionRequestID)
 			reqCtx.RequestState = RequestEvicted
+			if s.evictionLookup != nil {
+				reqCtx.RequestDroppedReason = s.evictionLookup.GetReason(evictionRequestID)
+			}
 			if sendErr := reqCtx.updateStateAndSendIfNeeded(srv, logger); sendErr != nil {
 				return sendErr
 			}
@@ -486,14 +492,27 @@ func (r *RequestContext) updateStateAndSendIfNeeded(srv extProcPb.ExternalProces
 	// Handle eviction — send ImmediateResponse(429) to Envoy to reset the upstream connection.
 	if r.RequestState == RequestEvicted {
 		loggerTrace.Info("Sending ImmediateResponse for evicted request")
+		ir := &extProcPb.ImmediateResponse{
+			Status: &envoyTypePb.HttpStatus{
+				Code: envoyTypePb.StatusCode_TooManyRequests,
+			},
+			Body: []byte("request evicted by flow control"),
+		}
+		if r.RequestDroppedReason != "" {
+			ir.Headers = &extProcPb.HeaderMutation{
+				SetHeaders: []*configPb.HeaderValueOption{
+					{
+						Header: &configPb.HeaderValue{
+							Key:      errcommon.RequestDroppedReasonHeaderKey,
+							RawValue: []byte(r.RequestDroppedReason),
+						},
+					},
+				},
+			}
+		}
 		return srv.Send(&extProcPb.ProcessingResponse{
 			Response: &extProcPb.ProcessingResponse_ImmediateResponse{
-				ImmediateResponse: &extProcPb.ImmediateResponse{
-					Status: &envoyTypePb.HttpStatus{
-						Code: envoyTypePb.StatusCode_TooManyRequests,
-					},
-					Body: []byte("request evicted by flow control"),
-				},
+				ImmediateResponse: ir,
 			},
 		})
 	}

@@ -34,14 +34,14 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
-	"github.com/llm-d/llm-d-inference-scheduler/pkg/epp/backend/metrics"
-	"github.com/llm-d/llm-d-inference-scheduler/pkg/epp/flowcontrol/contracts"
-	"github.com/llm-d/llm-d-inference-scheduler/pkg/epp/flowcontrol/contracts/mocks"
-	"github.com/llm-d/llm-d-inference-scheduler/pkg/epp/flowcontrol/types"
-	fwkdl "github.com/llm-d/llm-d-inference-scheduler/pkg/epp/framework/interface/datalayer"
-	"github.com/llm-d/llm-d-inference-scheduler/pkg/epp/framework/interface/flowcontrol"
-	fwkfcmocks "github.com/llm-d/llm-d-inference-scheduler/pkg/epp/framework/interface/flowcontrol/mocks"
-	"github.com/llm-d/llm-d-inference-scheduler/pkg/epp/framework/plugins/flowcontrol/usagelimits"
+	"github.com/llm-d/llm-d-router/pkg/epp/backend/metrics"
+	"github.com/llm-d/llm-d-router/pkg/epp/flowcontrol/contracts"
+	"github.com/llm-d/llm-d-router/pkg/epp/flowcontrol/contracts/mocks"
+	"github.com/llm-d/llm-d-router/pkg/epp/flowcontrol/types"
+	fwkdl "github.com/llm-d/llm-d-router/pkg/epp/framework/interface/datalayer"
+	"github.com/llm-d/llm-d-router/pkg/epp/framework/interface/flowcontrol"
+	fwkfcmocks "github.com/llm-d/llm-d-router/pkg/epp/framework/interface/flowcontrol/mocks"
+	"github.com/llm-d/llm-d-router/pkg/epp/framework/plugins/flowcontrol/usagelimits"
 )
 
 const (
@@ -123,8 +123,8 @@ func newTestHarness(t *testing.T, expiryCleanupInterval time.Duration) *testHarn
 	h.FairnessPolicyFunc = h.fairnessPolicy
 
 	// Provide a default stats implementation that is effectively infinite.
-	h.StatsFunc = func() contracts.ShardStats {
-		return contracts.ShardStats{
+	h.StatsFunc = func() *contracts.ShardStats {
+		return &contracts.ShardStats{
 			TotalCapacityBytes: 1e9,
 			PerPriorityBandStats: map[int]contracts.PriorityBandStats{
 				testFlow.Priority: {CapacityBytes: 1e9},
@@ -321,8 +321,8 @@ func TestShardProcessor(t *testing.T) {
 			h := newTestHarness(t, testCleanupTick)
 			item := h.newTestItem("req-capacity-reject", testFlow, testTTL)
 			h.addQueue(testFlow)
-			h.StatsFunc = func() contracts.ShardStats {
-				return contracts.ShardStats{PerPriorityBandStats: map[int]contracts.PriorityBandStats{
+			h.StatsFunc = func() *contracts.ShardStats {
+				return &contracts.ShardStats{PerPriorityBandStats: map[int]contracts.PriorityBandStats{
 					testFlow.Priority: {CapacityBytes: 50}, // 50 is less than item size of 100
 				}}
 			}
@@ -878,7 +878,7 @@ func TestShardProcessor(t *testing.T) {
 				t.Run(tc.name, func(t *testing.T) {
 					t.Parallel()
 					h := newTestHarness(t, testCleanupTick)
-					h.StatsFunc = func() contracts.ShardStats { return tc.stats }
+					h.StatsFunc = func() *contracts.ShardStats { return &tc.stats }
 					hasCap := h.processor.hasCapacity(testFlow.Priority, tc.itemByteSize)
 					assert.Equal(t, tc.expectHasCap, hasCap, "Capacity check result should match expected value")
 				})

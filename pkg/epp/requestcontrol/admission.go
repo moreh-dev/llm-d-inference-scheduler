@@ -23,14 +23,14 @@ import (
 	"github.com/go-logr/logr"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	errcommon "github.com/llm-d/llm-d-inference-scheduler/pkg/common/error"
-	logutil "github.com/llm-d/llm-d-inference-scheduler/pkg/common/observability/logging"
-	"github.com/llm-d/llm-d-inference-scheduler/pkg/epp/flowcontrol/contracts"
-	"github.com/llm-d/llm-d-inference-scheduler/pkg/epp/flowcontrol/types"
-	"github.com/llm-d/llm-d-inference-scheduler/pkg/epp/framework/interface/flowcontrol"
-	"github.com/llm-d/llm-d-inference-scheduler/pkg/epp/framework/interface/scheduling"
-	"github.com/llm-d/llm-d-inference-scheduler/pkg/epp/handlers"
-	requtil "github.com/llm-d/llm-d-inference-scheduler/pkg/epp/util/request"
+	errcommon "github.com/llm-d/llm-d-router/pkg/common/error"
+	logutil "github.com/llm-d/llm-d-router/pkg/common/observability/logging"
+	"github.com/llm-d/llm-d-router/pkg/epp/flowcontrol/contracts"
+	"github.com/llm-d/llm-d-router/pkg/epp/flowcontrol/types"
+	"github.com/llm-d/llm-d-router/pkg/epp/framework/interface/flowcontrol"
+	"github.com/llm-d/llm-d-router/pkg/epp/framework/interface/scheduling"
+	"github.com/llm-d/llm-d-router/pkg/epp/handlers"
+	requtil "github.com/llm-d/llm-d-router/pkg/epp/util/request"
 )
 
 // AdmissionController defines the interface for making admission control decisions.
@@ -223,12 +223,13 @@ func translateFlowControlOutcome(outcome types.QueueOutcome, err error) error {
 	case types.QueueOutcomeDispatched:
 		return nil
 	case types.QueueOutcomeRejectedCapacity:
-		return errcommon.Error{Code: errcommon.ResourceExhausted, Msg: msg}
+		return errcommon.Error{Code: errcommon.ResourceExhausted, Msg: msg, Headers: map[string]string{errcommon.RequestDroppedReasonHeaderKey: string(errcommon.RequestDroppedReasonSaturated)}}
 	case types.QueueOutcomeEvictedTTL:
-		return errcommon.Error{Code: errcommon.ServiceUnavailable, Msg: "request timed out in queue: " + msg}
+		return errcommon.Error{Code: errcommon.ServiceUnavailable, Msg: "request timed out in queue: " + msg, Headers: map[string]string{errcommon.RequestDroppedReasonHeaderKey: string(errcommon.RequestDroppedReasonTTLExpired)}}
 	case types.QueueOutcomeEvictedContextCancelled:
-		return errcommon.Error{Code: errcommon.ServiceUnavailable, Msg: "client disconnected: " + msg}
+		return errcommon.Error{Code: errcommon.ServiceUnavailable, Msg: "client disconnected: " + msg, Headers: map[string]string{errcommon.RequestDroppedReasonHeaderKey: string(errcommon.RequestDroppedReasonContextCancelled)}}
 	case types.QueueOutcomeRejectedOther, types.QueueOutcomeEvictedOther:
+		// No x-removal-reason header: these are internal/unexpected failures, not a specific removal policy.
 		return errcommon.Error{Code: errcommon.Internal, Msg: "internal flow control error: " + msg}
 	default:
 		return errcommon.Error{Code: errcommon.Internal, Msg: "unhandled flow control outcome: " + msg}

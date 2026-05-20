@@ -2,7 +2,7 @@ inferenceExtension:
   replicas: 1
   image:
     registry: ghcr.io/llm-d
-    repository: llm-d-inference-scheduler-dev
+    repository: llm-d-router-endpoint-picker-dev
     tag: main
     pullPolicy: Always
   extProcPort: 9002
@@ -32,7 +32,7 @@ inferenceExtension:
     targetPorts:
       - 8000
     # unused when createInferencePool is true
-    modelServerType: vllm # vllm, sglang, triton-tensorrt-llm, trtllm-serve
+    modelServerType: vllm # vllm, sglang, triton-tensorrt-llm, trtllm-serve, triton
     # unused when createInferencePool is true
     modelServerProtocol: http # http, grpc
 
@@ -351,6 +351,16 @@ inferenceExtension:
     # preset. For example, set sidecar.image to replace the preset image.
   monitoring:
     interval: "10s"
+    # Monitoring provider selection.
+    # Options: ["gmp", "prometheusoperator"].
+    #     gmp: Google Managed Prometheus
+    #     prometheusoperator: Open Source Prometheus Operator
+    # If not set, defaults to "prometheusoperator". For backwards compatibility,
+    # legacy provider.name=gke still maps to "gmp" when this field is unset.
+    provider:
+      name: ""
+      gmp:
+        autopilot: false
     # Prometheus ServiceMonitor will be created when enabled for EPP metrics collection
     prometheus:
       enabled: false
@@ -383,21 +393,11 @@ inferenceExtension:
     # insecureSkipVerify disables TLS certificate verification when scheme is https.
     insecureSkipVerify: true
 
-# Options: ["gke"]
-provider:
-  name: none
-
-  # GKE-specific configuration.
-  # This block is only used if name is "gke".
-  gke:
-    # Set to true if the cluster is an Autopilot cluster.
-    autopilot: false
-
 # This is not used when you deploy standalone with inferenceExtension.endpointsServer.createInferencePool=false
 inferencePool:
   targetPorts:
     - number: 8000
-  modelServerType: vllm # vllm, sglang, triton-tensorrt-llm, trtllm-serve
+  modelServerType: vllm # vllm, sglang, triton-tensorrt-llm, trtllm-serve, triton
   modelServerProtocol: http # http, grpc
   apiVersion: inference.networking.k8s.io/v1
   # modelServers: # REQUIRED
